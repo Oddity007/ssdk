@@ -2,6 +2,10 @@ include stddef, stdlib, stdio, ctype, stdint, stdbool, string
 include float
 include ./array
 import cstd/[stdlib,string,setjmp]
+import memory/Allocator
+
+
+printf: extern func(String,...)->Int
 
 version(gc){
 	include gc/gc
@@ -10,7 +14,6 @@ version(gc){
 Object: abstract class {
 
     class: Class
-    __refcount: SizeT
 
     /// Instance initializer: set default values for a new instance of this class
     __defaults__: func {}
@@ -24,20 +27,12 @@ Object: abstract class {
         class inheritsFrom(T)
     }
     
-    retain: func -> This{
-        __refcount+=1
-        return this
+    // Deletes an instance
+    delete: func{
+        __destroy__()
+        class _deleteClass()
+        class getAllocator() freeMemory(this)
     }
-    release: func{
-        __refcount-=1
-        if(__refcount==0) free(this)
-    }
-    clone: func -> This{
-        that:=calloc(1,this class size)
-        memcpy(that,this,this class size)
-        return that
-    }
-
 }
 
 Class: abstract class {
@@ -46,9 +41,9 @@ Class: abstract class {
     instanceSize: SizeT
     
     /** Number of octets to allocate to hold an instance of this class
-    * it's different because for classes, instanceSize may greatly
-    * vary, but size will always be equal to the size of a Pointer.
-    * for basic types (e.g. Int, Char, Pointer), size == instanceSize
+        it's different because for classes, instanceSize may greatly
+        vary, but size will always be equal to the size of a Pointer.
+        for basic types (e.g. Int, Char, Pointer), size == instanceSize
     */
     size: SizeT
 
@@ -58,9 +53,42 @@ Class: abstract class {
     /// Pointer to instance of super-class
     super: const Class
 
+    /// Because we can't declare it as an Allocator directly (recursion)
+    _allocators: Pointer[5]
+
+    /// Reference count for a dynamically created class
+    _referenceCount: UInt
+
+    _wasAllocatedDynamically: Bool
+
+    _retainClass: final func{
+        _referenceCount+=1
+    }
+    
+    _deleteClass: final func{
+        _referenceCount-=1
+        if(this _wasAllocatedDynamically==false) return
+        allocator:=this getAllocator()
+        if(_referenceCount==0) allocator freeMemory(this)
+    }
+
+    getAllocator: final func -> Allocator{
+	Allocator new(_allocators[0], _allocators[1], _allocators[2], _allocators[3], _allocators[4])
+    }
+    
+    setAllocator: final func(newAllocator: Allocator){
+        _allocators[0] = newAllocator mallocPtr
+        _allocators[1] = newAllocator callocPtr
+        _allocators[2] = newAllocator reallocPtr
+        _allocators[3] = newAllocator freePtr
+        _allocators[4] = newAllocator data
+    }
+
     /// Create a new instance of the object of type defined by this class
     alloc: final func ~_class -> Object {
-        object := calloc(1,instanceSize) as Object
+	allocator:=this getAllocator()
+        object := allocator allocateZeroed(instanceSize) as Object
+        _retainClass()
         if(object) {
             object class = this
         }
