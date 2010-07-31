@@ -1,9 +1,7 @@
 include stddef, stdlib, stdio, ctype, stdint, stdbool, string
 include float
-include ./array
-import cstd/[stdlib,string,setjmp]
-import memory/Allocator
 
+include ./array
 
 printf: extern func(String,...)->Int
 
@@ -27,11 +25,17 @@ Object: abstract class {
         class inheritsFrom(T)
     }
     
-    // Deletes an instance
-    delete: func{
+
+    // Memory management
+    __refcount: SizeT
+    retain: func ~refcount -> This{
+        __refcount+=1
+        return this
+    }
+    release: func ~refcount{
+        __refcount -=1
+        if(__refcount) return
         __destroy__()
-        class _deleteClass()
-        class getAllocator() freeMemory(this)
     }
 }
 
@@ -53,42 +57,10 @@ Class: abstract class {
     /// Pointer to instance of super-class
     super: const Class
 
-    /// Because we can't declare it as an Allocator directly (recursion)
-    _allocators: Pointer[5]
-
-    /// Reference count for a dynamically created class
-    _referenceCount: UInt
-
-    _wasAllocatedDynamically: Bool
-
-    _retainClass: final func{
-        _referenceCount+=1
-    }
-    
-    _deleteClass: final func{
-        _referenceCount-=1
-        if(this _wasAllocatedDynamically==false) return
-        allocator:=this getAllocator()
-        if(_referenceCount==0) allocator freeMemory(this)
-    }
-
-    getAllocator: final func -> Allocator{
-	Allocator new(_allocators[0], _allocators[1], _allocators[2], _allocators[3], _allocators[4])
-    }
-    
-    setAllocator: final func(newAllocator: Allocator){
-        _allocators[0] = newAllocator mallocPtr
-        _allocators[1] = newAllocator callocPtr
-        _allocators[2] = newAllocator reallocPtr
-        _allocators[3] = newAllocator freePtr
-        _allocators[4] = newAllocator data
-    }
-
     /// Create a new instance of the object of type defined by this class
     alloc: final func ~_class -> Object {
-	allocator:=this getAllocator()
-        object := allocator allocateZeroed(instanceSize) as Object
-        _retainClass()
+        object := gc_malloc(This instanceSize) as Object
+        object = object retain()
         if(object) {
             object class = this
         }
@@ -104,6 +76,8 @@ Class: abstract class {
 Array: cover from _lang_array__Array {
     length: extern Int
     data: extern Pointer
+
+    free: extern(_lang_array__Array_free) func
 }
 
 None: class {init: func {}}
@@ -168,4 +142,41 @@ LDBL_MIN, LDBL_MAX: extern static const LDouble
 Range: cover {
     min, max: Int
     init: func@(=min,=max){}
+}
+
+/**
+ * exceptions
+ */
+
+ExceptionMessageBuffer: Char[1024]
+
+Exception: cover {
+
+    origin: Class
+    msg : String
+
+    init: func@ ~originMsg (=origin, =msg) {}
+    init: func@ ~noOrigin (=msg) {}
+
+    crash: func {
+        fflush(stdout)
+        abort()
+    }
+
+    getMessage: func -> String {
+        buffer := ExceptionMessageBuffer as String
+        if(origin) snprintf(buffer, 1024, "[%s in %s]: %s\n", this class name, origin name, msg)
+        else snprintf(buffer, 1024, "[%s]: %s\n", this class name, msg)
+        return buffer
+    }
+
+    print: func {
+        fprintf(stderr, "%s", getMessage())
+    }
+
+    throw: func {
+        print()
+        crash()
+    }
+
 }
