@@ -1,17 +1,10 @@
 include stdio
+import cstd/stdarg
 
 FILE: extern cover
 
 stdout, stderr, stdin: extern FILE*
 
-println: func ~withStr (str: Char*) {
-	printf("%s\n", str)
-}
-println: func {
-	printf("\n")
-}
-
-// input/output
 printf: extern func (Char*, ...) -> Int
 
 fprintf: extern func (FILE*, Char*, ...) -> Int

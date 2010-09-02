@@ -1,18 +1,17 @@
-include string
+CString: cover from Char*{
+	length: extern(strlen) func -> SizeT
+	println: extern(puts) func
+	each: func (fn: Func(Char)){
+		i := 0 as SizeT
+		while(this[i]){
+			fn(this[i])
+			i += 1
+		}
+	}
+}
 
-strcmp: extern func (Char*, Char*) -> Int
-strncmp: extern func (Char*, Char*, Int) -> Int
-strstr: extern func (Char*, Char*)
-strlen:  extern func (Char*) -> Int
+String: cover from CString extends CString
 
-memset: extern func (Pointer, Int, SizeT) -> Pointer
-memcmp: extern func (Pointer, Pointer, SizeT) -> Int
-memmove: extern func (Pointer, Pointer, SizeT)
-memcpy: extern func (Pointer, Pointer, SizeT)
-
-strtol:  extern func (Char*, Pointer, Int) -> Long
-strtoll: extern func (Char*, Pointer, Int) -> LLong
-strtoul: extern func (Char*, Pointer, Int) -> ULong
-strtof:  extern func (Char*, Pointer)      -> Float
-strtod:  extern func (Char*, Pointer)      -> Double
-strtold: extern func (Char*, Pointer)      -> LDouble
+makeStringLiteral: func (str: Char*, strLen: SizeT) -> String {
+	str as String
+}
